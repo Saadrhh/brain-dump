@@ -21,6 +21,8 @@ const clearBtn = document.getElementById("clear");
 const themeBtn = document.getElementById("theme");
 const themeIcon = document.getElementById("themeIcon");
 const themeColorMeta = document.getElementById("themeColor");
+const shell = document.querySelector(".shell");
+const app = document.querySelector(".app");
 
 let audioFile = null;
 let recorder = null;
@@ -171,8 +173,10 @@ function persistTranscript() {
 }
 
 function updateClearVisibility() {
-  clearBtn.hidden = conversation.length === 0;
-  transcript.hidden = conversation.length === 0;
+  const hasChat = conversation.length > 0;
+  clearBtn.hidden = !hasChat;
+  transcript.hidden = !hasChat;
+  shell.classList.toggle("has-chat", hasChat);
 }
 
 function scrollTranscript() {
@@ -366,7 +370,12 @@ text.addEventListener("input", () => {
 });
 
 text.addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+  if (e.key !== "Enter") return;
+
+  const isMod = e.metaKey || e.ctrlKey;
+  const isMobile = window.matchMedia("(max-width: 700px), (pointer: coarse)").matches;
+
+  if (isMod || (isMobile && !e.shiftKey)) {
     e.preventDefault();
     sendDump();
   }
@@ -488,6 +497,25 @@ function stopRecording() {
 }
 
 send.addEventListener("click", sendDump);
+
+function syncViewportHeight() {
+  if (!window.visualViewport || !app) return;
+  const height = Math.round(window.visualViewport.height);
+  app.style.height = height + "px";
+  app.style.maxHeight = height + "px";
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", syncViewportHeight);
+  window.visualViewport.addEventListener("scroll", syncViewportHeight);
+  syncViewportHeight();
+}
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
 
 applyTheme(localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light");
 loadDraft();

@@ -77,6 +77,9 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   font-family: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   background:
@@ -87,14 +90,17 @@ body {
 
 body {
   height: 100dvh;
+  height: 100svh;
 }
 
 .app {
   height: 100dvh;
+  height: 100svh;
   max-height: 100dvh;
+  max-height: 100svh;
   overflow: hidden;
-  padding: calc(16px + env(safe-area-inset-top)) 16px
-    calc(12px + env(safe-area-inset-bottom));
+  padding: calc(12px + env(safe-area-inset-top)) 12px
+    calc(8px + env(safe-area-inset-bottom));
   display: flex;
   justify-content: center;
 }
@@ -108,27 +114,42 @@ body {
   min-height: 0;
 }
 
+.composer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 4px 16px;
+  padding: 4px 2px 12px;
   gap: 12px;
   flex-shrink: 0;
+}
+
+.header-copy {
+  min-width: 0;
 }
 
 .header h1 {
   margin: 0;
   font-family: "Instrument Serif", Georgia, serif;
-  font-size: 32px;
+  font-size: clamp(26px, 7vw, 32px);
   font-weight: 400;
   letter-spacing: -0.6px;
 }
 
 .header p {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
+}
+
+.shell.has-chat .header p {
+  display: none;
 }
 
 .header-actions {
@@ -146,15 +167,15 @@ body {
 .transcript {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 22px;
   box-shadow: 0 8px 30px var(--shadow);
 }
 
 .transcript {
   flex: 1 1 auto;
   min-height: 0;
-  margin-bottom: 12px;
-  padding: 18px;
+  margin-bottom: 10px;
+  padding: 14px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -169,12 +190,12 @@ body {
 .messages {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .bubble {
   max-width: 92%;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-radius: 18px;
   animation: rise 0.3s ease;
 }
@@ -295,18 +316,18 @@ body {
 textarea {
   display: block;
   width: 100%;
-  min-height: 110px;
-  max-height: 180px;
+  min-height: 88px;
+  max-height: 140px;
   resize: none;
   border: 0;
   outline: 0;
   background: transparent;
-  padding: 18px 20px 10px;
+  padding: 16px 16px 8px;
   color: var(--text);
   font: inherit;
-  font-size: 17px;
-  line-height: 1.6;
-  border-radius: 24px;
+  font-size: 16px;
+  line-height: 1.5;
+  border-radius: 22px;
 }
 
 textarea::placeholder {
@@ -315,17 +336,18 @@ textarea::placeholder {
 
 .footer {
   border-top: 1px solid var(--border-soft);
-  padding: 12px;
+  padding: 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .tools {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   align-items: center;
+  min-width: 0;
 }
 
 .tool {
@@ -333,7 +355,7 @@ textarea::placeholder {
   border: 0;
   background: transparent;
   border-radius: 13px;
-  padding: 0 11px;
+  padding: 0 10px;
   color: var(--tool);
   display: flex;
   align-items: center;
@@ -381,13 +403,14 @@ textarea::placeholder {
   border-radius: 15px;
   background: var(--send-bg);
   color: var(--send-text);
-  padding: 0 18px;
+  padding: 0 16px;
   font: inherit;
   font-weight: 650;
   display: flex;
   align-items: center;
   gap: 9px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .send:disabled {
@@ -410,7 +433,7 @@ textarea::placeholder {
 }
 
 .attachment {
-  margin: 0 12px 12px;
+  margin: 0 10px 10px;
   padding: 12px;
   background: var(--surface-soft);
   border: 1px solid var(--border);
@@ -457,7 +480,7 @@ textarea::placeholder {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 220px;
+  max-width: 180px;
 }
 
 .remove {
@@ -471,8 +494,8 @@ textarea::placeholder {
 }
 
 .error {
-  margin-top: 10px;
-  padding: 13px 15px;
+  margin-top: 8px;
+  padding: 12px 14px;
   background: var(--error-bg);
   border: 1px solid var(--error-border);
   border-radius: 16px;
@@ -489,9 +512,13 @@ textarea::placeholder {
   text-align: center;
   color: var(--faint);
   font-size: 11px;
-  padding: 10px 4px 0;
+  padding: 8px 4px 0;
   margin: 0;
   flex-shrink: 0;
+}
+
+.shell.has-chat .site-footer {
+  display: none;
 }
 
 @keyframes spin {
@@ -518,31 +545,71 @@ textarea::placeholder {
   }
 }
 
-@media (max-width: 430px) {
+@media (max-width: 520px) {
   .footer {
-    align-items: stretch;
+    gap: 6px;
   }
 
   .tool {
     padding: 0 8px;
+    font-size: 13px;
   }
 
   .send {
-    padding: 0 15px;
+    padding: 0 14px;
   }
 
-  .header h1 {
-    font-size: 28px;
+  .bubble {
+    max-width: 96%;
   }
 }
 
 @media (min-width: 700px) {
   .app {
-    padding-top: calc(28px + env(safe-area-inset-top));
+    padding: calc(28px + env(safe-area-inset-top)) 16px
+      calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .header {
+    padding: 8px 4px 16px;
+  }
+
+  .header h1 {
+    font-size: 36px;
+  }
+
+  .header p {
+    font-size: 15px;
+  }
+
+  .shell.has-chat .header p {
+    display: block;
+  }
+
+  .shell.has-chat .site-footer {
+    display: block;
+  }
+
+  .transcript {
+    padding: 18px;
+    margin-bottom: 12px;
   }
 
   textarea {
     min-height: 120px;
+    max-height: 180px;
     font-size: 18px;
+    padding: 18px 20px 10px;
+  }
+
+  .card,
+  .transcript {
+    border-radius: 24px;
+  }
+}
+
+@media (display-mode: standalone) {
+  .app {
+    padding-top: calc(8px + env(safe-area-inset-top));
   }
 }
