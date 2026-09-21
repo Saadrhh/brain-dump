@@ -28,8 +28,14 @@
             <h1>Brain Dump</h1>
             <p>Get it out of your head.</p>
           </div>
-          <div class="dot" aria-hidden="true"></div>
+          <button class="tool clear-btn" id="clear" type="button" hidden>
+            Clear
+          </button>
         </header>
+
+        <section id="transcript" class="transcript" hidden>
+          <div id="messages" class="messages"></div>
+        </section>
 
         <section class="card">
           <textarea
@@ -65,36 +71,25 @@
                 <span id="audioName"></span>
               </div>
             </div>
-            <button class="remove" id="remove" type="button" aria-label="Remove audio">
+            <button
+              class="remove"
+              id="remove"
+              type="button"
+              aria-label="Remove audio"
+            >
               ×
             </button>
           </div>
 
           <p class="hint">
             <span id="draftHint"></span>
-            <span class="hint-keys"><kbd>⌘</kbd><kbd>Enter</kbd> to send</span>
+            <span class="hint-keys"
+              ><kbd>⌘</kbd><kbd>Enter</kbd> to send</span
+            >
           </p>
         </section>
 
-        <div id="status" class="status" hidden></div>
         <div id="error" class="error" hidden></div>
-
-        <section id="response" class="response" hidden>
-          <div class="response-label"><span></span>Latest reply</div>
-          <div id="responseMeta" class="response-meta" hidden></div>
-          <div id="responseText" class="response-text"></div>
-          <ul id="responseDetails" class="response-details" hidden></ul>
-        </section>
-
-        <section id="historySection" class="history" hidden>
-          <div class="history-header">
-            <h2>Recent dumps</h2>
-            <button class="tool history-clear" id="clearHistory" type="button">
-              Clear
-            </button>
-          </div>
-          <div id="historyList" class="history-list"></div>
-        </section>
 
         <footer>Private little inbox for your brain.</footer>
       </div>

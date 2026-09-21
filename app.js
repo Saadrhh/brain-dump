@@ -1,8 +1,8 @@
-const WEBHOOK = "https://jjhkjhk.app.n8n.cloud/webhook/brain-dump";
+const WEBHOOK = "https://jepol27887findizecom.app.n8n.cloud/webhook/brain-dump";
 const DRAFT_KEY = "brain-dump-draft";
-const HISTORY_KEY = "brain-dump-history";
+const SESSION_KEY = "brain-dump-session-id";
+const TRANSCRIPT_KEY = "brain-dump-transcript";
 const CLIENT_ID_KEY = "brain-dump-client-id";
-const MAX_HISTORY = 20;
 
 const text = document.getElementById("text");
 const send = document.getElementById("send");
@@ -14,15 +14,10 @@ const attachment = document.getElementById("attachment");
 const audioName = document.getElementById("audioName");
 const remove = document.getElementById("remove");
 const error = document.getElementById("error");
-const statusEl = document.getElementById("status");
-const response = document.getElementById("response");
-const responseText = document.getElementById("responseText");
-const responseMeta = document.getElementById("responseMeta");
-const responseDetails = document.getElementById("responseDetails");
 const draftHint = document.getElementById("draftHint");
-const historySection = document.getElementById("historySection");
-const historyList = document.getElementById("historyList");
-const clearHistoryBtn = document.getElementById("clearHistory");
+const transcript = document.getElementById("transcript");
+const messagesEl = document.getElementById("messages");
+const clearBtn = document.getElementById("clear");
 
 let audioFile = null;
 let recorder = null;
@@ -33,13 +28,34 @@ let timer = null;
 let seconds = 0;
 let draftTimer = null;
 let sending = false;
+let sessionId = getOrCreateSessionId();
+let conversation = loadTranscript();
+
+function newId() {
+  return (
+    crypto.randomUUID?.() ||
+    "bd-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+  );
+}
+
+function getOrCreateSessionId() {
+  let id = localStorage.getItem(SESSION_KEY);
+  if (!id) {
+    id = newId();
+    localStorage.setItem(SESSION_KEY, id);
+  }
+  return id;
+}
+
+function rotateSession() {
+  sessionId = newId();
+  localStorage.setItem(SESSION_KEY, sessionId);
+}
 
 function getClientId() {
   let id = localStorage.getItem(CLIENT_ID_KEY);
   if (!id) {
-    id =
-      crypto.randomUUID?.() ||
-      "bd-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    id = newId();
     localStorage.setItem(CLIENT_ID_KEY, id);
   }
   return id;
@@ -47,6 +63,7 @@ function getClientId() {
 
 function metaPayload() {
   return {
+    sessionId,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     timestamp: new Date().toISOString(),
     clientId: getClientId(),
@@ -58,7 +75,6 @@ function updateSend() {
 }
 
 function showError(msg) {
-  statusEl.hidden = true;
   error.textContent = msg;
   error.hidden = false;
 }
@@ -66,17 +82,6 @@ function showError(msg) {
 function clearError() {
   error.textContent = "";
   error.hidden = true;
-}
-
-function showStatus(msg) {
-  error.hidden = true;
-  statusEl.textContent = msg;
-  statusEl.hidden = false;
-}
-
-function clearStatus() {
-  statusEl.textContent = "";
-  statusEl.hidden = true;
 }
 
 function showAudio(file) {
@@ -101,17 +106,19 @@ function fmt(s) {
   );
 }
 
-function formatWhen(iso) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date(iso));
-  } catch {
-    return "";
+function escapeHtml(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderMarkdown(md) {
+  if (typeof marked !== "undefined" && marked.parse) {
+    return marked.parse(md || "");
   }
+  return "<p>" + escapeHtml(md || "") + "</p>";
 }
 
 function saveDraft() {
@@ -134,178 +141,99 @@ function loadDraft() {
   updateSend();
 }
 
-function loadHistory() {
+function loadTranscript() {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    const saved = JSON.parse(localStorage.getItem(TRANSCRIPT_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
   } catch {
     return [];
   }
 }
 
-function saveHistory(items) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, MAX_HISTORY)));
+function persistTranscript() {
+  localStorage.setItem(TRANSCRIPT_KEY, JSON.stringify(conversation));
 }
 
-function addHistoryEntry(entry) {
-  const items = loadHistory();
-  items.unshift(entry);
-  saveHistory(items);
-  renderHistory();
+function updateClearVisibility() {
+  clearBtn.hidden = conversation.length === 0;
+  transcript.hidden = conversation.length === 0;
 }
 
-function renderHistory() {
-  const items = loadHistory();
-  historyList.innerHTML = "";
-
-  if (!items.length) {
-    historySection.hidden = true;
-    return;
-  }
-
-  historySection.hidden = false;
-
-  items.forEach((item) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "history-item";
-
-    const preview =
-      item.dump || (item.hadAudio ? "Voice dump" : "Empty dump");
-    const reply = item.message || "No reply saved";
-
-    btn.innerHTML =
-      '<div class="history-item-top"><span>' +
-      escapeHtml(formatWhen(item.at)) +
-      "</span><span>" +
-      (item.hadAudio ? "Audio" : "Text") +
-      "</span></div>" +
-      '<div class="history-item-preview">' +
-      escapeHtml(preview) +
-      "</div>" +
-      '<div class="history-item-reply">' +
-      escapeHtml(reply) +
-      "</div>";
-
-    btn.addEventListener("click", () => {
-      showResult(item.data || { message: item.message }, { scroll: true });
-    });
-
-    historyList.appendChild(btn);
+function scrollTranscript() {
+  requestAnimationFrame(() => {
+    transcript.scrollTop = transcript.scrollHeight;
   });
 }
 
-function escapeHtml(str) {
-  return String(str || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+function appendMessage(role, content, { persist = true, pending = false } = {}) {
+  const entry = { role, content, at: new Date().toISOString(), pending: !!pending };
 
-function asArray(value) {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
-function countOf(data, keys) {
-  for (const key of keys) {
-    if (typeof data[key] === "number") return data[key];
-    if (Array.isArray(data[key])) return data[key].length;
+  if (persist && !pending) {
+    conversation.push({ role, content, at: entry.at });
+    persistTranscript();
   }
-  return 0;
-}
 
-function showResult(data, { scroll = false } = {}) {
-  const message =
-    typeof data?.message === "string"
-      ? data.message
-      : typeof data?.reply === "string"
-        ? data.reply
-        : typeof data?.text === "string"
-          ? data.text
-          : "";
+  const bubble = document.createElement("div");
+  bubble.className =
+    "bubble " + role + (pending ? " pending" : "");
+  if (pending) bubble.dataset.pending = "true";
 
-  if (!message && !data) return;
+  const label = document.createElement("span");
+  label.className = "bubble-label";
+  label.textContent = role === "user" ? "You" : "Brain Dump";
 
-  const body = message || "Done.";
-  if (typeof marked !== "undefined" && marked.parse) {
-    responseText.innerHTML = marked.parse(body);
+  const body = document.createElement("div");
+  body.className = "bubble-body";
+
+  if (pending) {
+    body.innerHTML =
+      '<span class="spinner"></span><span>Thinking...</span>';
+  } else if (role === "assistant") {
+    body.innerHTML = renderMarkdown(content);
   } else {
-    responseText.textContent = body;
+    body.textContent = content;
   }
 
-  const calendar = asArray(data.calendar || data.events || data.calendarItems);
-  const emails = asArray(data.emails || data.drafts || data.emailDrafts);
-  const errors = asArray(data.errors || data.errorItems);
-  const calendarCount = calendar.length || countOf(data, ["calendarCount", "eventsCreated"]);
-  const emailCount = emails.length || countOf(data, ["emailCount", "draftsCreated"]);
-  const errorCount = errors.length || countOf(data, ["errorCount"]);
+  bubble.appendChild(label);
+  bubble.appendChild(body);
+  messagesEl.appendChild(bubble);
 
-  responseMeta.innerHTML = "";
-  responseDetails.innerHTML = "";
+  updateClearVisibility();
+  scrollTranscript();
+  return bubble;
+}
 
-  const chips = [];
-  if (calendarCount) chips.push(["ok", calendarCount + " calendar"]);
-  if (emailCount) chips.push(["ok", emailCount + " email draft" + (emailCount === 1 ? "" : "s")]);
-  if (errorCount) chips.push(["warn", errorCount + " issue" + (errorCount === 1 ? "" : "s")]);
-  if (!calendarCount && !emailCount && !errorCount && data.summary) {
-    chips.push(["", String(data.summary)]);
-  }
+function removePending() {
+  messagesEl.querySelectorAll('[data-pending="true"]').forEach((el) => el.remove());
+}
 
-  if (chips.length) {
-    chips.forEach(([type, label]) => {
-      const chip = document.createElement("span");
-      chip.className = "chip" + (type ? " " + type : "");
-      chip.textContent = label;
-      responseMeta.appendChild(chip);
-    });
-    responseMeta.hidden = false;
-  } else {
-    responseMeta.hidden = true;
-  }
-
-  const detailItems = [];
-
-  calendar.forEach((item) => {
-    const title = item.title || item.summary || item.name || "Calendar event";
-    const when = item.start || item.when || item.date || "";
-    detailItems.push(["Calendar", title + (when ? " · " + when : "")]);
+function renderTranscript() {
+  messagesEl.innerHTML = "";
+  conversation.forEach((msg) => {
+    appendMessage(msg.role, msg.content, { persist: false });
   });
+  updateClearVisibility();
+  if (conversation.length) scrollTranscript();
+}
 
-  emails.forEach((item) => {
-    const to = item.to || item.recipient || "";
-    const subject = item.subject || item.title || "Email draft";
-    detailItems.push(["Email draft", (to ? to + " — " : "") + subject]);
-  });
+function looksLikeQuestion(message) {
+  return /\?/.test(message || "");
+}
 
-  errors.forEach((item) => {
-    const msg =
-      typeof item === "string"
-        ? item
-        : item.message || item.error || "Something failed";
-    detailItems.push(["Issue", msg]);
-  });
-
-  if (detailItems.length) {
-    detailItems.forEach(([label, body]) => {
-      const li = document.createElement("li");
-      li.innerHTML =
-        '<span class="label">' +
-        escapeHtml(label) +
-        "</span>" +
-        escapeHtml(body);
-      responseDetails.appendChild(li);
-    });
-    responseDetails.hidden = false;
-  } else {
-    responseDetails.hidden = true;
-  }
-
-  response.hidden = false;
-
-  if (scroll) {
-    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-  }
+function startNewConversation() {
+  conversation = [];
+  persistTranscript();
+  messagesEl.innerHTML = "";
+  rotateSession();
+  clearError();
+  removeAudio();
+  text.value = "";
+  localStorage.removeItem(DRAFT_KEY);
+  draftHint.textContent = "";
+  updateClearVisibility();
+  updateSend();
+  text.placeholder = "What's on your mind?";
+  text.focus();
 }
 
 async function readResponse(res) {
@@ -326,7 +254,6 @@ async function sendDump() {
   if (send.disabled || sending || recording) return;
 
   clearError();
-  clearStatus();
   sending = true;
   updateSend();
   send.innerHTML = '<span class="spinner"></span><span>Thinking...</span>';
@@ -334,14 +261,25 @@ async function sendDump() {
   const dumpText = text.value.trim();
   const hadAudio = Boolean(audioFile);
   const meta = metaPayload();
+  const userDisplay = dumpText || (hadAudio ? "Voice message" : "");
+
+  appendMessage("user", userDisplay);
+  appendMessage("assistant", "", { persist: false, pending: true });
+
+  text.value = "";
+  localStorage.removeItem(DRAFT_KEY);
+  draftHint.textContent = "";
+  const audioToSend = audioFile;
+  removeAudio();
 
   try {
     let res;
 
-    if (audioFile) {
+    if (audioToSend) {
       const form = new FormData();
-      form.append("audio", audioFile);
+      form.append("audio", audioToSend);
       if (dumpText) form.append("text", dumpText);
+      form.append("sessionId", meta.sessionId);
       form.append("timezone", meta.timezone);
       form.append("timestamp", meta.timestamp);
       form.append("clientId", meta.clientId);
@@ -351,13 +289,14 @@ async function sendDump() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: text.value,
+          text: dumpText,
           ...meta,
         }),
       });
     }
 
     const data = await readResponse(res);
+    removePending();
 
     if (!res.ok) {
       const detail =
@@ -375,26 +314,19 @@ async function sendDump() {
             ? data.text
             : null;
 
-    if (!data || (message === null && !data.calendar && !data.emails && !data.errors)) {
+    if (message === null) {
       throw new Error("Invalid response from workflow");
     }
 
-    showStatus("Out of your head.");
-    showResult(data, { scroll: true });
+    appendMessage("assistant", message);
 
-    addHistoryEntry({
-      at: meta.timestamp,
-      dump: dumpText,
-      hadAudio,
-      message: message || "Done.",
-      data,
-    });
-
-    text.value = "";
-    localStorage.removeItem(DRAFT_KEY);
-    draftHint.textContent = "";
-    removeAudio();
+    if (looksLikeQuestion(message)) {
+      text.placeholder = "Reply here…";
+    } else {
+      text.placeholder = "What's on your mind?";
+    }
   } catch (e) {
+    removePending();
     const msg =
       e && e.message
         ? e.message
@@ -408,6 +340,7 @@ async function sendDump() {
     sending = false;
     send.innerHTML = "Send <span>→</span>";
     updateSend();
+    text.focus();
   }
 }
 
@@ -440,11 +373,7 @@ fileInput.addEventListener("change", (e) => {
 });
 
 remove.addEventListener("click", removeAudio);
-
-clearHistoryBtn.addEventListener("click", () => {
-  localStorage.removeItem(HISTORY_KEY);
-  renderHistory();
-});
+clearBtn.addEventListener("click", startNewConversation);
 
 record.addEventListener("click", async () => {
   clearError();
@@ -546,7 +475,7 @@ function stopRecording() {
 send.addEventListener("click", sendDump);
 
 loadDraft();
-renderHistory();
+renderTranscript();
 text.focus();
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || "");
