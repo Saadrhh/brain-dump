@@ -3,6 +3,7 @@ const DRAFT_KEY = "brain-dump-draft";
 const SESSION_KEY = "brain-dump-session-id";
 const TRANSCRIPT_KEY = "brain-dump-transcript";
 const CLIENT_ID_KEY = "brain-dump-client-id";
+const THEME_KEY = "brain-dump-theme";
 
 const text = document.getElementById("text");
 const send = document.getElementById("send");
@@ -14,10 +15,12 @@ const attachment = document.getElementById("attachment");
 const audioName = document.getElementById("audioName");
 const remove = document.getElementById("remove");
 const error = document.getElementById("error");
-const draftHint = document.getElementById("draftHint");
 const transcript = document.getElementById("transcript");
 const messagesEl = document.getElementById("messages");
 const clearBtn = document.getElementById("clear");
+const themeBtn = document.getElementById("theme");
+const themeIcon = document.getElementById("themeIcon");
+const themeColorMeta = document.getElementById("themeColor");
 
 let audioFile = null;
 let recorder = null;
@@ -125,20 +128,33 @@ function saveDraft() {
   const value = text.value;
   if (value.trim()) {
     localStorage.setItem(DRAFT_KEY, value);
-    draftHint.textContent = "Draft saved";
   } else {
     localStorage.removeItem(DRAFT_KEY);
-    draftHint.textContent = "";
   }
 }
 
 function loadDraft() {
   const saved = localStorage.getItem(DRAFT_KEY);
-  if (saved) {
-    text.value = saved;
-    draftHint.textContent = "Draft restored";
-  }
+  if (saved) text.value = saved;
   updateSend();
+}
+
+function applyTheme(theme) {
+  const dark = theme === "dark";
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+  themeIcon.textContent = dark ? "◑" : "◐";
+  if (themeColorMeta) {
+    themeColorMeta.setAttribute("content", dark ? "#141412" : "#f5f5f2");
+  }
+}
+
+function toggleTheme() {
+  const next =
+    document.documentElement.getAttribute("data-theme") === "dark"
+      ? "light"
+      : "dark";
+  applyTheme(next);
 }
 
 function loadTranscript() {
@@ -229,7 +245,6 @@ function startNewConversation() {
   removeAudio();
   text.value = "";
   localStorage.removeItem(DRAFT_KEY);
-  draftHint.textContent = "";
   updateClearVisibility();
   updateSend();
   text.placeholder = "What's on your mind?";
@@ -268,7 +283,6 @@ async function sendDump() {
 
   text.value = "";
   localStorage.removeItem(DRAFT_KEY);
-  draftHint.textContent = "";
   const audioToSend = audioFile;
   removeAudio();
 
@@ -374,6 +388,7 @@ fileInput.addEventListener("change", (e) => {
 
 remove.addEventListener("click", removeAudio);
 clearBtn.addEventListener("click", startNewConversation);
+themeBtn.addEventListener("click", toggleTheme);
 
 record.addEventListener("click", async () => {
   clearError();
@@ -474,14 +489,7 @@ function stopRecording() {
 
 send.addEventListener("click", sendDump);
 
+applyTheme(localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light");
 loadDraft();
 renderTranscript();
 text.focus();
-
-const isMac = /Mac|iPhone|iPad/.test(navigator.platform || "");
-const keyHint = document.querySelector(".hint-keys");
-if (keyHint) {
-  keyHint.innerHTML = isMac
-    ? "<kbd>⌘</kbd><kbd>Enter</kbd> to send"
-    : "<kbd>Ctrl</kbd><kbd>Enter</kbd> to send";
-}
