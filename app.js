@@ -1,8 +1,8 @@
-const WEBHOOK = "https://vehiri5991.app.n8n.cloud/webhook/brain-dump";
-const DIGEST_WEBHOOK = "https://vehiri5991.app.n8n.cloud/webhook/weekly-digest";
-// Unlock screen + n8n Header Auth value (must match).
+const WEBHOOK = "https://xepocom324.app.n8n.cloud/webhook/brain-dump";
+const DIGEST_WEBHOOK = "https://xepocom324.app.n8n.cloud/webhook/weekly-digest";
+// Unlock screen + n8n Header Auth value (must match the credential Value).
 const ACCESS_CODE = "hiabe";
-// n8n Header Auth → Name field (must match exactly).
+// n8n Header Auth → Name field (must match the credential Name exactly).
 const AUTH_HEADER = "X-Brain-Dump-Key";
 const DRAFT_KEY = "brain-dump-draft";
 const SESSION_KEY = "brain-dump-session-id";
@@ -90,11 +90,7 @@ function getClientId() {
 
 function metaPayload() {
   return {
-    sessionId,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-    timestamp: new Date().toISOString(),
-    clientId: getClientId(),
-    auth: ACCESS_CODE,
+    session_id: sessionId,
   };
 }
 
@@ -549,7 +545,6 @@ async function sendDump() {
   pulseComposer();
 
   const dumpText = text.value.trim();
-  const meta = metaPayload();
 
   appendMessage("user", dumpText);
   appendMessage("assistant", "", { persist: false, pending: true });
@@ -563,7 +558,7 @@ async function sendDump() {
       headers: apiHeaders(),
       body: JSON.stringify({
         text: dumpText,
-        ...meta,
+        session_id: sessionId,
       }),
     });
 
