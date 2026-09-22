@@ -9,7 +9,10 @@
     <meta name="theme-color" content="#f5f5f2" id="themeColor" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="apple-mobile-web-app-title" content="Brain Dump" />
     <meta name="format-detection" content="telephone=no" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -50,7 +53,7 @@
               aria-label="Toggle dark mode"
               title="Toggle dark mode"
             >
-              <span id="themeIcon" aria-hidden="true">◐</span>
+              <span id="themeIcon" class="theme-icon" aria-hidden="true"></span>
             </button>
             <button class="tool clear-btn" id="clear" type="button" hidden>
               Clear
@@ -58,12 +61,31 @@
           </div>
         </header>
 
-        <section id="transcript" class="transcript" hidden>
-          <div id="messages" class="messages"></div>
-        </section>
+        <div class="stage">
+          <section id="emptyState" class="empty-state">
+            <p class="empty-lead">
+              Dump a thought, meeting, or email to write.
+            </p>
+            <p class="empty-sub">
+              I’ll sort calendar events and drafts for you.
+            </p>
+          </section>
+
+          <section id="transcript" class="transcript" hidden>
+            <div id="messages" class="messages"></div>
+          </section>
+        </div>
 
         <div class="composer">
-          <section class="card">
+          <section class="card" id="composerCard">
+            <div id="recordingPanel" class="recording-panel" hidden>
+              <canvas id="wave" class="wave" width="320" height="36"></canvas>
+              <span id="recordingTime" class="recording-time">00:00</span>
+              <button class="tool stop-rec" id="stopRec" type="button">
+                Stop
+              </button>
+            </div>
+
             <textarea
               id="text"
               placeholder="What's on your mind?"
@@ -96,7 +118,7 @@
                 <div class="audiosymbol" aria-hidden="true">♫</div>
                 <div class="filename">
                   <strong id="audioTitle">Audio attached</strong>
-                  <span id="audioName"></span>
+                  <span id="audioMeta"></span>
                 </div>
               </div>
               <button

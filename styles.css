@@ -30,6 +30,7 @@
   --recording-text: #333;
   --audio-icon: #e9e9e4;
   --filename-muted: #8c8c84;
+  --wave: #5a5a52;
   --theme-color: #f5f5f2;
 }
 
@@ -65,6 +66,7 @@ html[data-theme="dark"] {
   --recording-text: #e8e8e2;
   --audio-icon: #32322d;
   --filename-muted: #8c8c84;
+  --wave: #c8c8be;
   --theme-color: #141412;
 }
 
@@ -114,6 +116,14 @@ body {
   min-height: 0;
 }
 
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 10px;
+}
+
 .composer {
   flex-shrink: 0;
   display: flex;
@@ -125,9 +135,14 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 2px 12px;
+  padding: 4px 2px 14px;
   gap: 12px;
   flex-shrink: 0;
+  transition: padding 0.25s ease;
+}
+
+.shell.has-chat .header {
+  padding: 0 2px 8px;
 }
 
 .header-copy {
@@ -140,12 +155,18 @@ body {
   font-size: clamp(26px, 7vw, 32px);
   font-weight: 400;
   letter-spacing: -0.6px;
+  transition: font-size 0.25s ease;
+}
+
+.shell.has-chat .header h1 {
+  font-size: clamp(22px, 5.5vw, 26px);
 }
 
 .header p {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
+  transition: opacity 0.2s ease, max-height 0.25s ease;
 }
 
 .shell.has-chat .header p {
@@ -163,6 +184,55 @@ body {
   display: none;
 }
 
+.theme-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+}
+
+.theme-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 8px 6px 20px;
+  animation: rise 0.4s ease;
+}
+
+.empty-state[hidden] {
+  display: none;
+}
+
+.empty-lead {
+  margin: 0;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: clamp(22px, 5.5vw, 28px);
+  font-weight: 400;
+  letter-spacing: -0.4px;
+  line-height: 1.25;
+  color: var(--text);
+  max-width: 16ch;
+}
+
+.empty-sub {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+  max-width: 28ch;
+}
+
 .card,
 .transcript {
   background: var(--surface);
@@ -174,7 +244,6 @@ body {
 .transcript {
   flex: 1 1 auto;
   min-height: 0;
-  margin-bottom: 10px;
   padding: 14px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -194,6 +263,7 @@ body {
 }
 
 .bubble {
+  position: relative;
   max-width: 92%;
   padding: 12px 14px;
   border-radius: 18px;
@@ -215,14 +285,56 @@ body {
   border-bottom-left-radius: 6px;
 }
 
-.bubble-label {
-  display: block;
+.bubble-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-bottom: 6px;
+}
+
+.bubble-label {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 650;
   opacity: 0.55;
+}
+
+.bubble-time {
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.bubble:hover .bubble-time,
+.bubble.show-time .bubble-time {
+  opacity: 0.55;
+}
+
+.bubble-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.copy-btn {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.45;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.copy-btn:hover {
+  opacity: 0.85;
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
 .bubble.user .bubble-body {
@@ -298,19 +410,78 @@ body {
 }
 
 .bubble.pending {
-  opacity: 0.7;
+  min-width: 72px;
 }
 
 .bubble.pending .bubble-body {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--filename-muted);
-  font-size: 14px;
+  min-height: 22px;
+}
+
+.thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.thinking i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--filename-muted);
+  animation: think 1.2s ease-in-out infinite;
+}
+
+.thinking i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.thinking i:nth-child(3) {
+  animation-delay: 0.3s;
 }
 
 .card {
   flex-shrink: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card.settling {
+  animation: settle 0.35s ease;
+}
+
+.recording-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 12px 0;
+  padding: 10px 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.recording-panel[hidden] {
+  display: none;
+}
+
+.wave {
+  flex: 1;
+  width: 100%;
+  height: 36px;
+  display: block;
+}
+
+.recording-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--recording-text);
+  min-width: 42px;
+}
+
+.stop-rec {
+  color: #c0392b;
+  font-weight: 650;
 }
 
 textarea {
@@ -374,7 +545,6 @@ textarea::placeholder {
 }
 
 .theme-btn {
-  font-size: 18px;
   min-width: 44px;
   justify-content: center;
 }
@@ -441,6 +611,7 @@ textarea::placeholder {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  animation: rise 0.25s ease;
 }
 
 .attachment[hidden] {
@@ -480,7 +651,7 @@ textarea::placeholder {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+  max-width: 200px;
 }
 
 .remove {
@@ -545,6 +716,31 @@ textarea::placeholder {
   }
 }
 
+@keyframes settle {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.985);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes think {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
 @media (max-width: 520px) {
   .footer {
     gap: 6px;
@@ -562,6 +758,14 @@ textarea::placeholder {
   .bubble {
     max-width: 96%;
   }
+
+  .bubble-time {
+    opacity: 0.45;
+  }
+
+  .bubble:not(.show-time) .bubble-time {
+    opacity: 0;
+  }
 }
 
 @media (min-width: 700px) {
@@ -574,8 +778,16 @@ textarea::placeholder {
     padding: 8px 4px 16px;
   }
 
+  .shell.has-chat .header {
+    padding: 4px 4px 10px;
+  }
+
   .header h1 {
     font-size: 36px;
+  }
+
+  .shell.has-chat .header h1 {
+    font-size: 28px;
   }
 
   .header p {
@@ -583,21 +795,25 @@ textarea::placeholder {
   }
 
   .shell.has-chat .header p {
-    display: block;
+    display: none;
   }
 
   .shell.has-chat .site-footer {
-    display: block;
+    display: none;
+  }
+
+  .empty-lead {
+    font-size: 32px;
+    max-width: 18ch;
   }
 
   .transcript {
     padding: 18px;
-    margin-bottom: 12px;
   }
 
   textarea {
-    min-height: 120px;
-    max-height: 180px;
+    min-height: 110px;
+    max-height: 160px;
     font-size: 18px;
     padding: 18px 20px 10px;
   }
