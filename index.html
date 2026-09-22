@@ -67,7 +67,7 @@
               Dump a thought, meeting, or email to write.
             </p>
             <p class="empty-sub">
-              I’ll sort calendar events and drafts for you.
+              Type or speak — I’ll sort calendar events and drafts for you.
             </p>
           </section>
 
@@ -79,10 +79,13 @@
         <div class="composer">
           <section class="card" id="composerCard">
             <div id="recordingPanel" class="recording-panel" hidden>
-              <canvas id="wave" class="wave" width="320" height="36"></canvas>
+              <div class="listening-bars" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span>
+              </div>
+              <span id="recordingHint" class="recording-hint">Listening…</span>
               <span id="recordingTime" class="recording-time">00:00</span>
               <button class="tool stop-rec" id="stopRec" type="button">
-                Stop
+                Done
               </button>
             </div>
 
@@ -98,36 +101,11 @@
               <div class="tools">
                 <button class="tool" id="record" type="button">
                   <span class="rec-dot" aria-hidden="true"></span>
-                  <span id="recordText">Record</span>
+                  <span id="recordText">Speak</span>
                 </button>
-                <button class="tool" id="attach" type="button">＋ Attach</button>
-                <input
-                  id="file"
-                  type="file"
-                  accept="audio/*,.webm,.m4a,.mp3,.ogg"
-                  hidden
-                />
               </div>
               <button class="send" id="send" type="button" disabled>
                 Send <span>→</span>
-              </button>
-            </div>
-
-            <div id="attachment" class="attachment" hidden>
-              <div class="audioinfo">
-                <div class="audiosymbol" aria-hidden="true">♫</div>
-                <div class="filename">
-                  <strong id="audioTitle">Audio attached</strong>
-                  <span id="audioMeta"></span>
-                </div>
-              </div>
-              <button
-                class="remove"
-                id="remove"
-                type="button"
-                aria-label="Remove audio"
-              >
-                ×
               </button>
             </div>
           </section>

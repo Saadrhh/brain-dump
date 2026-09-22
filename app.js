@@ -10,16 +10,13 @@ const SUN_ICON =
 const MOON_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 14.5A8.5 8.5 0 0 1 9.5 3 7 7 0 1 0 21 14.5z"/></svg>';
 
+const SpeechRecognition =
+  window.SpeechRecognition || window.webkitSpeechRecognition;
+
 const text = document.getElementById("text");
 const send = document.getElementById("send");
 const record = document.getElementById("record");
 const recordText = document.getElementById("recordText");
-const attach = document.getElementById("attach");
-const fileInput = document.getElementById("file");
-const attachment = document.getElementById("attachment");
-const audioMeta = document.getElementById("audioMeta");
-const audioTitle = document.getElementById("audioTitle");
-const remove = document.getElementById("remove");
 const error = document.getElementById("error");
 const transcript = document.getElementById("transcript");
 const messagesEl = document.getElementById("messages");
@@ -33,24 +30,19 @@ const emptyState = document.getElementById("emptyState");
 const composerCard = document.getElementById("composerCard");
 const recordingPanel = document.getElementById("recordingPanel");
 const recordingTime = document.getElementById("recordingTime");
+const recordingHint = document.getElementById("recordingHint");
 const stopRec = document.getElementById("stopRec");
-const wave = document.getElementById("wave");
 
-let audioFile = null;
-let audioDurationLabel = "";
-let recorder = null;
-let stream = null;
-let chunks = [];
-let recording = false;
+let recognition = null;
+let listening = false;
 let timer = null;
 let seconds = 0;
 let draftTimer = null;
 let sending = false;
 let sessionId = getOrCreateSessionId();
 let conversation = loadTranscript();
-let audioCtx = null;
-let analyser = null;
-let waveFrame = null;
+let speechBase = "";
+let finalSpeech = "";
 
 function newId() {
   return (
@@ -92,7 +84,7 @@ function metaPayload() {
 }
 
 function updateSend() {
-  send.disabled = sending || recording || (!text.value.trim() && !audioFile);
+  send.disabled = sending || listening || !text.value.trim();
 }
 
 function showError(msg) {
@@ -103,29 +95,6 @@ function showError(msg) {
 function clearError() {
   error.textContent = "";
   error.hidden = true;
-}
-
-function showAudio(file, durationSec) {
-  audioFile = file;
-  attachment.hidden = false;
-  audioTitle.textContent = "Audio attached";
-  const name = file.name || "voice note";
-  if (typeof durationSec === "number" && durationSec > 0) {
-    audioDurationLabel = fmt(Math.round(durationSec));
-    audioMeta.textContent = audioDurationLabel + " · " + name;
-  } else {
-    audioDurationLabel = "";
-    audioMeta.textContent = name;
-  }
-  updateSend();
-}
-
-function removeAudio() {
-  audioFile = null;
-  audioDurationLabel = "";
-  attachment.hidden = true;
-  fileInput.value = "";
-  updateSend();
 }
 
 function fmt(s) {
@@ -182,7 +151,10 @@ function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
   localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
   themeIcon.innerHTML = dark ? SUN_ICON : MOON_ICON;
-  themeBtn.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+  themeBtn.setAttribute(
+    "aria-label",
+    dark ? "Switch to light mode" : "Switch to dark mode"
+  );
   themeBtn.title = dark ? "Light mode" : "Dark mode";
   if (themeColorMeta) {
     themeColorMeta.setAttribute("content", dark ? "#141412" : "#f5f5f2");
@@ -256,10 +228,7 @@ function bindTimeToggle(bubble) {
     }, 420);
   });
 
-  const clearPress = () => {
-    clearTimeout(pressTimer);
-  };
-
+  const clearPress = () => clearTimeout(pressTimer);
   bubble.addEventListener("pointerup", clearPress);
   bubble.addEventListener("pointerleave", clearPress);
   bubble.addEventListener("pointercancel", clearPress);
@@ -301,7 +270,8 @@ function appendMessage(role, content, { persist = true, pending = false, at } = 
   body.className = "bubble-body";
 
   if (pending) {
-    body.innerHTML = '<span class="thinking" aria-label="Thinking"><i></i><i></i><i></i></span>';
+    body.innerHTML =
+      '<span class="thinking" aria-label="Thinking"><i></i><i></i><i></i></span>';
   } else if (role === "assistant") {
     body.innerHTML = renderMarkdown(content);
   } else {
@@ -335,7 +305,9 @@ function appendMessage(role, content, { persist = true, pending = false, at } = 
 }
 
 function removePending() {
-  messagesEl.querySelectorAll('[data-pending="true"]').forEach((el) => el.remove());
+  messagesEl
+    .querySelectorAll('[data-pending="true"]')
+    .forEach((el) => el.remove());
 }
 
 function renderTranscript() {
@@ -351,88 +323,143 @@ function looksLikeQuestion(message) {
   return /\?/.test(message || "");
 }
 
+function joinSpeech(base, spoken) {
+  const b = (base || "").trimEnd();
+  const s = (spoken || "").trim();
+  if (!s) return b;
+  if (!b) return s;
+  return /[\s\n]$/.test(base) ? b + " " + s : b + " " + s;
+}
+
+function applyLiveTranscript(interim) {
+  text.value = joinSpeech(speechBase, finalSpeech + (interim ? " " + interim : ""));
+  text.scrollTop = text.scrollHeight;
+  updateSend();
+}
+
+function stopListening({ keepText = true } = {}) {
+  if (!listening && !recognition) {
+    recordingPanel.hidden = true;
+    return;
+  }
+
+  listening = false;
+  record.classList.remove("recording");
+  recordText.textContent = "Speak";
+  clearInterval(timer);
+  recordingPanel.hidden = true;
+
+  if (recognition) {
+    try {
+      recognition.onend = null;
+      recognition.stop();
+    } catch (_) {}
+    recognition = null;
+  }
+
+  if (keepText) {
+    text.value = joinSpeech(speechBase, finalSpeech);
+    saveDraft();
+  }
+
+  updateSend();
+  text.focus();
+}
+
+function startListening() {
+  if (!SpeechRecognition) {
+    showError(
+      "Live transcription isn’t supported in this browser. Try Chrome or Safari, or just type."
+    );
+    return;
+  }
+
+  clearError();
+  speechBase = text.value;
+  finalSpeech = "";
+  seconds = 0;
+  listening = true;
+
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = navigator.language || "en-US";
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event) => {
+    let interim = "";
+    let finals = "";
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const piece = event.results[i][0].transcript;
+      if (event.results[i].isFinal) finals += piece;
+      else interim += piece;
+    }
+
+    if (finals) {
+      finalSpeech = (finalSpeech + " " + finals).replace(/\s+/g, " ").trim();
+    }
+
+    applyLiveTranscript(interim);
+    recordingHint.textContent = interim || finals ? "Transcribing…" : "Listening…";
+  };
+
+  recognition.onerror = (event) => {
+    if (event.error === "aborted" || event.error === "no-speech") return;
+    if (event.error === "not-allowed") {
+      showError("Microphone access was denied. You can still type your dump.");
+      stopListening();
+      return;
+    }
+    showError("Couldn’t keep listening (" + event.error + "). Try again or type.");
+    stopListening();
+  };
+
+  recognition.onend = () => {
+    if (!listening) return;
+    // Chrome often ends continuous sessions early — restart while user is still in speak mode
+    try {
+      recognition.start();
+    } catch (_) {
+      stopListening();
+    }
+  };
+
+  try {
+    recognition.start();
+  } catch (_) {
+    showError("Couldn’t start the microphone. Try again or type.");
+    stopListening();
+    return;
+  }
+
+  record.classList.add("recording");
+  recordText.textContent = "Listening";
+  recordingHint.textContent = "Listening…";
+  recordingTime.textContent = "00:00";
+  recordingPanel.hidden = false;
+
+  timer = setInterval(() => {
+    seconds++;
+    recordingTime.textContent = fmt(seconds);
+  }, 1000);
+
+  updateSend();
+}
+
 function startNewConversation() {
+  stopListening({ keepText: false });
   conversation = [];
   persistTranscript();
   messagesEl.innerHTML = "";
   rotateSession();
   clearError();
-  removeAudio();
-  stopWaveform();
   text.value = "";
   localStorage.removeItem(DRAFT_KEY);
   updateClearVisibility();
   updateSend();
   text.placeholder = "What's on your mind?";
   text.focus();
-}
-
-function drawWaveframe() {
-  if (!analyser || !wave) return;
-
-  const ctx = wave.getContext("2d");
-  const dpr = window.devicePixelRatio || 1;
-  const cssWidth = wave.clientWidth || 320;
-  const cssHeight = 36;
-  wave.width = Math.floor(cssWidth * dpr);
-  wave.height = Math.floor(cssHeight * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  const bufferLength = analyser.frequencyBinCount;
-  const data = new Uint8Array(bufferLength);
-
-  function frame() {
-    waveFrame = requestAnimationFrame(frame);
-    analyser.getByteTimeDomainData(data);
-
-    ctx.clearRect(0, 0, cssWidth, cssHeight);
-    const style = getComputedStyle(document.documentElement);
-    ctx.strokeStyle = style.getPropertyValue("--wave").trim() || "#5a5a52";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-
-    const slice = cssWidth / bufferLength;
-    let x = 0;
-    for (let i = 0; i < bufferLength; i++) {
-      const v = data[i] / 128;
-      const y = (v * cssHeight) / 2;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-      x += slice;
-    }
-    ctx.stroke();
-  }
-
-  frame();
-}
-
-function startWaveform(mediaStream) {
-  try {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioCtx.createMediaStreamSource(mediaStream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
-    recordingPanel.hidden = false;
-    drawWaveframe();
-  } catch {
-    recordingPanel.hidden = false;
-  }
-}
-
-function stopWaveform() {
-  if (waveFrame) cancelAnimationFrame(waveFrame);
-  waveFrame = null;
-  analyser = null;
-  if (audioCtx) {
-    audioCtx.close().catch(() => {});
-    audioCtx = null;
-  }
-  recordingPanel.hidden = true;
-  if (wave) {
-    const ctx = wave.getContext("2d");
-    ctx && ctx.clearRect(0, 0, wave.width, wave.height);
-  }
 }
 
 async function readResponse(res) {
@@ -450,7 +477,7 @@ async function readResponse(res) {
 }
 
 async function sendDump() {
-  if (send.disabled || sending || recording) return;
+  if (send.disabled || sending || listening) return;
 
   clearError();
   sending = true;
@@ -459,44 +486,23 @@ async function sendDump() {
   pulseComposer();
 
   const dumpText = text.value.trim();
-  const hadAudio = Boolean(audioFile);
   const meta = metaPayload();
-  const userDisplay =
-    dumpText ||
-    (hadAudio
-      ? "Voice message" + (audioDurationLabel ? " · " + audioDurationLabel : "")
-      : "");
 
-  appendMessage("user", userDisplay);
+  appendMessage("user", dumpText);
   appendMessage("assistant", "", { persist: false, pending: true });
 
   text.value = "";
   localStorage.removeItem(DRAFT_KEY);
-  const audioToSend = audioFile;
-  removeAudio();
 
   try {
-    let res;
-
-    if (audioToSend) {
-      const form = new FormData();
-      form.append("audio", audioToSend);
-      if (dumpText) form.append("text", dumpText);
-      form.append("sessionId", meta.sessionId);
-      form.append("timezone", meta.timezone);
-      form.append("timestamp", meta.timestamp);
-      form.append("clientId", meta.clientId);
-      res = await fetch(WEBHOOK, { method: "POST", body: form });
-    } else {
-      res = await fetch(WEBHOOK, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: dumpText,
-          ...meta,
-        }),
-      });
-    }
+    const res = await fetch(WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: dumpText,
+        ...meta,
+      }),
+    });
 
     const data = await readResponse(res);
     removePending();
@@ -523,11 +529,9 @@ async function sendDump() {
 
     appendMessage("assistant", message);
 
-    if (looksLikeQuestion(message)) {
-      text.placeholder = "Reply here…";
-    } else {
-      text.placeholder = "What's on your mind?";
-    }
+    text.placeholder = looksLikeQuestion(message)
+      ? "Reply here…"
+      : "What's on your mind?";
   } catch (e) {
     removePending();
     const msg =
@@ -558,7 +562,9 @@ text.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
 
   const isMod = e.metaKey || e.ctrlKey;
-  const isMobile = window.matchMedia("(max-width: 700px), (pointer: coarse)").matches;
+  const isMobile = window.matchMedia(
+    "(max-width: 700px), (pointer: coarse)"
+  ).matches;
 
   if (isMod || (isMobile && !e.shiftKey)) {
     e.preventDefault();
@@ -566,142 +572,17 @@ text.addEventListener("keydown", (e) => {
   }
 });
 
-attach.addEventListener("click", () => fileInput.click());
-
-fileInput.addEventListener("change", (e) => {
-  const f = e.target.files && e.target.files[0];
-  if (!f) return;
-
-  if (!f.type.startsWith("audio/")) {
-    showError("Please select an audio file.");
-    return;
-  }
-
-  const url = URL.createObjectURL(f);
-  const audio = new Audio();
-  audio.preload = "metadata";
-  audio.src = url;
-  audio.onloadedmetadata = () => {
-    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
-    URL.revokeObjectURL(url);
-    showAudio(f, duration);
-  };
-  audio.onerror = () => {
-    URL.revokeObjectURL(url);
-    showAudio(f);
-  };
-});
-
-remove.addEventListener("click", removeAudio);
 clearBtn.addEventListener("click", startNewConversation);
 themeBtn.addEventListener("click", toggleTheme);
-stopRec.addEventListener("click", () => {
-  if (recording) stopRecording();
-});
+stopRec.addEventListener("click", () => stopListening());
 
-record.addEventListener("click", async () => {
-  clearError();
-
-  if (recording) {
-    stopRecording();
+record.addEventListener("click", () => {
+  if (listening) {
+    stopListening();
     return;
   }
-
-  if (
-    !navigator.mediaDevices ||
-    !navigator.mediaDevices.getUserMedia ||
-    !window.MediaRecorder
-  ) {
-    showError(
-      "Audio recording isn't supported here. You can attach an audio file instead."
-    );
-    return;
-  }
-
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-    const types = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/mp4",
-      "audio/ogg;codecs=opus",
-      "audio/ogg",
-    ];
-    const type = types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
-
-    recorder = type
-      ? new MediaRecorder(stream, { mimeType: type })
-      : new MediaRecorder(stream);
-
-    chunks = [];
-
-    recorder.ondataavailable = (e) => {
-      if (e.data.size) chunks.push(e.data);
-    };
-
-    recorder.onstop = () => {
-      const mime = recorder.mimeType || type || "audio/webm";
-      const ext = mime.includes("ogg")
-        ? "ogg"
-        : mime.includes("mp4")
-          ? "m4a"
-          : "webm";
-      const blob = new Blob(chunks, { type: mime });
-      const durationSec = seconds;
-
-      showAudio(
-        new File([blob], "brain-dump-" + Date.now() + "." + ext, {
-          type: mime,
-        }),
-        durationSec
-      );
-
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-      stream = null;
-      recording = false;
-      record.classList.remove("recording");
-      recordText.textContent = "Record";
-      clearInterval(timer);
-      stopWaveform();
-      updateSend();
-    };
-
-    recorder.start();
-    recording = true;
-    seconds = 0;
-    record.classList.add("recording");
-    recordText.textContent = "Recording";
-    recordingTime.textContent = "00:00";
-    startWaveform(stream);
-
-    timer = setInterval(() => {
-      seconds++;
-      recordingTime.textContent = fmt(seconds);
-      recordText.textContent = "Recording";
-    }, 1000);
-
-    updateSend();
-  } catch (e) {
-    showError(
-      "Microphone access was denied or unavailable. You can attach an audio file instead."
-    );
-  }
+  startListening();
 });
-
-function stopRecording() {
-  if (recorder && recorder.state !== "inactive") {
-    recorder.stop();
-  } else {
-    recording = false;
-    if (stream) stream.getTracks().forEach((t) => t.stop());
-    record.classList.remove("recording");
-    recordText.textContent = "Record";
-    clearInterval(timer);
-    stopWaveform();
-    updateSend();
-  }
-}
 
 send.addEventListener("click", sendDump);
 
@@ -722,6 +603,11 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   });
+}
+
+if (!SpeechRecognition) {
+  record.disabled = true;
+  record.title = "Live transcription isn’t supported here";
 }
 
 applyTheme(localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light");
