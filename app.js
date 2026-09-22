@@ -1,4 +1,5 @@
-const WEBHOOK = "https://jepol27887findizecom.app.n8n.cloud/webhook/brain-dump";
+const WEBHOOK = "https://vehiri5991.app.n8n.cloud/webhook/brain-dump";
+const DIGEST_WEBHOOK = "https://vehiri5991.app.n8n.cloud/webhook/weekly-digest";
 // Change this — same value should be checked in n8n (body.auth or header).
 const ACCESS_CODE = "changeme";
 const DRAFT_KEY = "brain-dump-draft";
@@ -30,6 +31,7 @@ const error = document.getElementById("error");
 const transcript = document.getElementById("transcript");
 const messagesEl = document.getElementById("messages");
 const clearBtn = document.getElementById("clear");
+const digestBtn = document.getElementById("digest");
 const themeBtn = document.getElementById("theme");
 const themeIcon = document.getElementById("themeIcon");
 const themeColorMeta = document.getElementById("themeColor");
@@ -48,6 +50,7 @@ let timer = null;
 let seconds = 0;
 let draftTimer = null;
 let sending = false;
+let digesting = false;
 let sessionId = getOrCreateSessionId();
 let conversation = loadTranscript();
 let speechBase = "";
@@ -134,7 +137,8 @@ function lockApp() {
 }
 
 function updateSend() {
-  send.disabled = sending || listening || !text.value.trim();
+  send.disabled = sending || listening || digesting || !text.value.trim();
+  if (digestBtn) digestBtn.disabled = sending || listening || digesting;
 }
 
 function showError(msg) {
@@ -527,7 +531,7 @@ async function readResponse(res) {
 }
 
 async function sendDump() {
-  if (send.disabled || sending || listening) return;
+  if (send.disabled || sending || listening || digesting) return;
 
   clearError();
   sending = true;
@@ -622,7 +626,72 @@ text.addEventListener("keydown", (e) => {
   }
 });
 
+async function fetchDigest() {
+  if (digesting || sending || listening || !isUnlocked()) return;
+
+  clearError();
+  digesting = true;
+  updateSend();
+  const prevLabel = digestBtn.textContent;
+  digestBtn.textContent = "…";
+
+  appendMessage("user", "Weekly digest");
+  appendMessage("assistant", "", { persist: false, pending: true });
+
+  try {
+    const res = await fetch(DIGEST_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(metaPayload()),
+    });
+
+    const data = await readResponse(res);
+    removePending();
+
+    if (!res.ok) {
+      const detail =
+        (data && (data.message || data.error || data.digest)) ||
+        "Digest failed (" + res.status + ")";
+      throw new Error(typeof detail === "string" ? detail : "Digest failed");
+    }
+
+    const digest =
+      typeof data?.digest === "string"
+        ? data.digest
+        : typeof data?.message === "string"
+          ? data.message
+          : null;
+
+    if (!digest) throw new Error("Invalid digest response");
+
+    let body = digest;
+    if (data.generated_at) {
+      try {
+        const when = new Intl.DateTimeFormat(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(data.generated_at));
+        body = "_Generated " + when + "_\n\n" + digest;
+      } catch (_) {}
+    }
+
+    appendMessage("assistant", body);
+  } catch (e) {
+    removePending();
+    showError(
+      e && e.message
+        ? e.message
+        : "Couldn't load the weekly digest. Try again."
+    );
+  } finally {
+    digesting = false;
+    digestBtn.textContent = prevLabel;
+    updateSend();
+  }
+}
+
 clearBtn.addEventListener("click", startNewConversation);
+digestBtn.addEventListener("click", fetchDigest);
 themeBtn.addEventListener("click", toggleTheme);
 stopRec.addEventListener("click", () => stopListening());
 
