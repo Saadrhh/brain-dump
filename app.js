@@ -1,7 +1,9 @@
 const WEBHOOK = "https://vehiri5991.app.n8n.cloud/webhook/brain-dump";
 const DIGEST_WEBHOOK = "https://vehiri5991.app.n8n.cloud/webhook/weekly-digest";
-// Change this — same value should be checked in n8n (body.auth or header).
+// Unlock screen + n8n Header Auth value (must match).
 const ACCESS_CODE = "hiabe";
+// n8n Header Auth → Name field (must match exactly).
+const AUTH_HEADER = "X-Brain-Dump-Key";
 const DRAFT_KEY = "brain-dump-draft";
 const SESSION_KEY = "brain-dump-session-id";
 const TRANSCRIPT_KEY = "brain-dump-transcript";
@@ -93,6 +95,13 @@ function metaPayload() {
     timestamp: new Date().toISOString(),
     clientId: getClientId(),
     auth: ACCESS_CODE,
+  };
+}
+
+function apiHeaders() {
+  return {
+    "Content-Type": "application/json",
+    [AUTH_HEADER]: ACCESS_CODE,
   };
 }
 
@@ -551,7 +560,7 @@ async function sendDump() {
   try {
     const res = await fetch(WEBHOOK, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify({
         text: dumpText,
         ...meta,
@@ -641,7 +650,7 @@ async function fetchDigest() {
   try {
     const res = await fetch(DIGEST_WEBHOOK, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: apiHeaders(),
       body: JSON.stringify(metaPayload()),
     });
 
