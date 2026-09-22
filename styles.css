@@ -327,6 +327,12 @@ body {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   animation: rise 0.35s ease;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
+}
+
+.transcript::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
 }
 
 .transcript[hidden] {
