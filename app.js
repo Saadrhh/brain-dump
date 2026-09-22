@@ -1,7 +1,7 @@
 const WEBHOOK = "https://vehiri5991.app.n8n.cloud/webhook/brain-dump";
 const DIGEST_WEBHOOK = "https://vehiri5991.app.n8n.cloud/webhook/weekly-digest";
 // Change this — same value should be checked in n8n (body.auth or header).
-const ACCESS_CODE = "changeme";
+const ACCESS_CODE = "hiabe";
 const DRAFT_KEY = "brain-dump-draft";
 const SESSION_KEY = "brain-dump-session-id";
 const TRANSCRIPT_KEY = "brain-dump-transcript";
