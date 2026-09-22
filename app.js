@@ -1,9 +1,12 @@
 const WEBHOOK = "https://jepol27887findizecom.app.n8n.cloud/webhook/brain-dump";
+// Change this — same value should be checked in n8n (body.auth or header).
+const ACCESS_CODE = "changeme";
 const DRAFT_KEY = "brain-dump-draft";
 const SESSION_KEY = "brain-dump-session-id";
 const TRANSCRIPT_KEY = "brain-dump-transcript";
 const CLIENT_ID_KEY = "brain-dump-client-id";
 const THEME_KEY = "brain-dump-theme";
+const AUTH_KEY = "brain-dump-auth";
 
 const SUN_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
@@ -13,6 +16,12 @@ const MOON_ICON =
 const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition;
 
+const lock = document.getElementById("lock");
+const lockForm = document.getElementById("lockForm");
+const lockInput = document.getElementById("lockInput");
+const lockError = document.getElementById("lockError");
+const lockOut = document.getElementById("lockOut");
+const appRoot = document.getElementById("appRoot");
 const text = document.getElementById("text");
 const send = document.getElementById("send");
 const record = document.getElementById("record");
@@ -25,7 +34,7 @@ const themeBtn = document.getElementById("theme");
 const themeIcon = document.getElementById("themeIcon");
 const themeColorMeta = document.getElementById("themeColor");
 const shell = document.querySelector(".shell");
-const app = document.querySelector(".app");
+const app = document.getElementById("appRoot");
 const emptyState = document.getElementById("emptyState");
 const composerCard = document.getElementById("composerCard");
 const recordingPanel = document.getElementById("recordingPanel");
@@ -80,7 +89,48 @@ function metaPayload() {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     timestamp: new Date().toISOString(),
     clientId: getClientId(),
+    auth: ACCESS_CODE,
   };
+}
+
+function isUnlocked() {
+  return localStorage.getItem(AUTH_KEY) === "1";
+}
+
+function showApp() {
+  lock.hidden = true;
+  appRoot.hidden = false;
+  text.focus();
+}
+
+function showLock() {
+  if (typeof stopListening === "function") {
+    try {
+      stopListening({ keepText: true });
+    } catch (_) {}
+  }
+  appRoot.hidden = true;
+  lock.hidden = false;
+  lockError.hidden = true;
+  lockInput.value = "";
+  lockInput.focus();
+}
+
+function unlock(code) {
+  if (code !== ACCESS_CODE) {
+    lockError.hidden = false;
+    lockInput.select();
+    return false;
+  }
+  localStorage.setItem(AUTH_KEY, "1");
+  lockError.hidden = true;
+  showApp();
+  return true;
+}
+
+function lockApp() {
+  localStorage.removeItem(AUTH_KEY);
+  showLock();
 }
 
 function updateSend() {
@@ -586,8 +636,15 @@ record.addEventListener("click", () => {
 
 send.addEventListener("click", sendDump);
 
+lockForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  unlock(lockInput.value);
+});
+
+lockOut.addEventListener("click", lockApp);
+
 function syncViewportHeight() {
-  if (!window.visualViewport || !app) return;
+  if (!window.visualViewport || !app || app.hidden) return;
   const height = Math.round(window.visualViewport.height);
   app.style.height = height + "px";
   app.style.maxHeight = height + "px";
@@ -613,4 +670,9 @@ if (!SpeechRecognition) {
 applyTheme(localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light");
 loadDraft();
 renderTranscript();
-text.focus();
+
+if (isUnlocked()) {
+  showApp();
+} else {
+  showLock();
+}

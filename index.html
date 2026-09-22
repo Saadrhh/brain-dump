@@ -38,7 +38,25 @@
     </script>
   </head>
   <body>
-    <div class="app">
+    <div id="lock" class="lock">
+      <form id="lockForm" class="lock-card" autocomplete="current-password">
+        <h1>Brain Dump</h1>
+        <p>Enter your access code to continue.</p>
+        <input
+          id="lockInput"
+          type="password"
+          name="password"
+          placeholder="Access code"
+          enterkeyhint="go"
+          required
+          autofocus
+        />
+        <button class="send lock-submit" type="submit">Unlock</button>
+        <p id="lockError" class="lock-error" hidden>Wrong code. Try again.</p>
+      </form>
+    </div>
+
+    <div class="app" id="appRoot" hidden>
       <div class="shell">
         <header class="header">
           <div class="header-copy">
@@ -54,6 +72,15 @@
               title="Toggle dark mode"
             >
               <span id="themeIcon" class="theme-icon" aria-hidden="true"></span>
+            </button>
+            <button
+              class="tool"
+              id="lockOut"
+              type="button"
+              aria-label="Lock"
+              title="Lock"
+            >
+              Lock
             </button>
             <button class="tool clear-btn" id="clear" type="button" hidden>
               Clear
@@ -94,7 +121,6 @@
               placeholder="What's on your mind?"
               rows="3"
               enterkeyhint="send"
-              autofocus
             ></textarea>
 
             <div class="footer">
