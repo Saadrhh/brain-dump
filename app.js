@@ -678,10 +678,11 @@ async function fetchDigest() {
     appendMessage("assistant", body);
   } catch (e) {
     removePending();
+    const raw = e && e.message ? e.message : "";
     showError(
-      e && e.message
-        ? e.message
-        : "Couldn't load the weekly digest. Try again."
+      raw.includes("Failed to fetch")
+        ? "Couldn't reach the digest webhook. In n8n, open the Weekly Digest workflow and turn it Active (toggle top-right)."
+        : raw || "Couldn't load the weekly digest. Try again."
     );
   } finally {
     digesting = false;
