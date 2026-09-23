@@ -7,6 +7,7 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
     <meta name="theme-color" content="#f5f5f2" id="themeColor" />
+    <meta name="description" content="Private inbox for your brain. Dump thoughts; get calendar events, drafts, and digests." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta
@@ -51,8 +52,14 @@
           required
           autofocus
         />
-        <button class="send lock-submit" type="submit">Unlock</button>
+        <button class="send lock-submit" id="lockSubmit" type="submit">
+          Unlock
+        </button>
         <p id="lockError" class="lock-error" hidden>Wrong code. Try again.</p>
+        <p class="lock-privacy">
+          Private by design — your dumps go to your automation only. No ads or
+          trackers.
+        </p>
       </form>
     </div>
 
@@ -90,6 +97,11 @@
             </button>
           </div>
         </header>
+
+        <div id="installHint" class="install-hint" hidden>
+          <span id="installText">Add to Home Screen for the app-like version.</span>
+          <button type="button" class="tool" id="installDismiss">Got it</button>
+        </div>
 
         <div class="stage">
           <section id="emptyState" class="empty-state">
@@ -140,7 +152,11 @@
           </section>
 
           <div id="error" class="error" hidden></div>
-          <p class="site-footer">Private little inbox for your brain.</p>
+          <p class="site-footer">
+            Private little inbox for your brain.
+            <span class="privacy-dot">·</span>
+            No trackers. Data stays with your n8n + Google accounts.
+          </p>
         </div>
       </div>
     </div>

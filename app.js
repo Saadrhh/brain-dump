@@ -1,15 +1,14 @@
-const WEBHOOK = "https://xepocom324.app.n8n.cloud/webhook/brain-dump";
-const DIGEST_WEBHOOK = "https://xepocom324.app.n8n.cloud/webhook/weekly-digest";
-// Unlock screen + n8n Header Auth value (must match the credential Value).
-const ACCESS_CODE = "hiabe";
-// n8n Header Auth → Name field (must match the credential Name exactly).
-const AUTH_HEADER = "X-Brain-Dump-Key";
+const API_AUTH = "/api/auth";
+const API_BRAIN = "/api/brain-dump";
+const API_DIGEST = "/api/weekly-digest";
+const REQUEST_TIMEOUT_MS = 90000;
+
 const DRAFT_KEY = "brain-dump-draft";
 const SESSION_KEY = "brain-dump-session-id";
 const TRANSCRIPT_KEY = "brain-dump-transcript";
-const CLIENT_ID_KEY = "brain-dump-client-id";
 const THEME_KEY = "brain-dump-theme";
-const AUTH_KEY = "brain-dump-auth";
+const AUTH_CODE_KEY = "brain-dump-access-code";
+const INSTALL_HINT_KEY = "brain-dump-install-hint";
 
 const SUN_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
@@ -23,6 +22,7 @@ const lock = document.getElementById("lock");
 const lockForm = document.getElementById("lockForm");
 const lockInput = document.getElementById("lockInput");
 const lockError = document.getElementById("lockError");
+const lockSubmit = document.getElementById("lockSubmit");
 const lockOut = document.getElementById("lockOut");
 const appRoot = document.getElementById("appRoot");
 const text = document.getElementById("text");
@@ -45,6 +45,9 @@ const recordingPanel = document.getElementById("recordingPanel");
 const recordingTime = document.getElementById("recordingTime");
 const recordingHint = document.getElementById("recordingHint");
 const stopRec = document.getElementById("stopRec");
+const installHint = document.getElementById("installHint");
+const installText = document.getElementById("installText");
+const installDismiss = document.getElementById("installDismiss");
 
 let recognition = null;
 let listening = false;
@@ -53,10 +56,12 @@ let seconds = 0;
 let draftTimer = null;
 let sending = false;
 let digesting = false;
+let unlocking = false;
 let sessionId = getOrCreateSessionId();
 let conversation = loadTranscript();
 let speechBase = "";
 let finalSpeech = "";
+let accessCode = sessionStorage.getItem(AUTH_CODE_KEY) || "";
 
 function newId() {
   return (
@@ -79,35 +84,21 @@ function rotateSession() {
   localStorage.setItem(SESSION_KEY, sessionId);
 }
 
-function getClientId() {
-  let id = localStorage.getItem(CLIENT_ID_KEY);
-  if (!id) {
-    id = newId();
-    localStorage.setItem(CLIENT_ID_KEY, id);
-  }
-  return id;
-}
-
-function metaPayload() {
-  return {
-    session_id: sessionId,
-  };
-}
-
 function apiHeaders() {
   return {
     "Content-Type": "application/json",
-    [AUTH_HEADER]: ACCESS_CODE,
+    "X-Access-Code": accessCode,
   };
 }
 
 function isUnlocked() {
-  return localStorage.getItem(AUTH_KEY) === "1";
+  return Boolean(accessCode);
 }
 
 function showApp() {
   lock.hidden = true;
   appRoot.hidden = false;
+  maybeShowInstallHint();
   text.focus();
 }
 
@@ -124,20 +115,9 @@ function showLock() {
   lockInput.focus();
 }
 
-function unlock(code) {
-  if (code !== ACCESS_CODE) {
-    lockError.hidden = false;
-    lockInput.select();
-    return false;
-  }
-  localStorage.setItem(AUTH_KEY, "1");
-  lockError.hidden = true;
-  showApp();
-  return true;
-}
-
 function lockApp() {
-  localStorage.removeItem(AUTH_KEY);
+  accessCode = "";
+  sessionStorage.removeItem(AUTH_CODE_KEY);
   showLock();
 }
 
@@ -154,6 +134,21 @@ function showError(msg) {
 function clearError() {
   error.textContent = "";
   error.hidden = true;
+}
+
+function friendlyError(status, fallback, data) {
+  const fromServer =
+    data && (data.message || data.error || data.errorMessage);
+  if (typeof fromServer === "string" && fromServer.trim()) return fromServer;
+
+  if (status === 401) return "Unauthorized. Lock and unlock with your access code.";
+  if (status === 429) return "Slow down — rate limit hit. Wait a bit and try again.";
+  if (status === 504) return "That took too long. Try again in a moment.";
+  if (status === 502 || status >= 500) {
+    return "Couldn't reach n8n. Check the workflow is Active and Vercel env URLs.";
+  }
+  if (status === 400) return "That request wasn't valid. Check your message and try again.";
+  return fallback || "Something went wrong.";
 }
 
 function fmt(s) {
@@ -192,11 +187,8 @@ function renderMarkdown(md) {
 
 function saveDraft() {
   const value = text.value;
-  if (value.trim()) {
-    localStorage.setItem(DRAFT_KEY, value);
-  } else {
-    localStorage.removeItem(DRAFT_KEY);
-  }
+  if (value.trim()) localStorage.setItem(DRAFT_KEY, value);
+  else localStorage.removeItem(DRAFT_KEY);
 }
 
 function loadDraft() {
@@ -299,7 +291,16 @@ function bindTimeToggle(bubble) {
   });
 }
 
-function appendMessage(role, content, { persist = true, pending = false, at } = {}) {
+function needsConfirmation(data, message) {
+  if (data && (data.needs_confirmation === true || data.needsConfirmation === true)) {
+    return true;
+  }
+  if (data && (data.confirmation || data.confirm)) return true;
+  const m = message || "";
+  return /\b(confirm|are you sure|shall i|should i|okay to|ok to)\b/i.test(m) && /\?/.test(m);
+}
+
+function appendMessage(role, content, { persist = true, pending = false, at, data } = {}) {
   const stamped = at || new Date().toISOString();
 
   if (persist && !pending) {
@@ -343,6 +344,34 @@ function appendMessage(role, content, { persist = true, pending = false, at } = 
   if (!pending && role === "assistant" && content) {
     const actions = document.createElement("div");
     actions.className = "bubble-actions";
+
+    if (needsConfirmation(data, content)) {
+      const yes = document.createElement("button");
+      yes.type = "button";
+      yes.className = "confirm-btn confirm-yes";
+      yes.textContent = (data && (data.confirm_label || data.confirmLabel)) || "Confirm";
+      yes.addEventListener("click", (e) => {
+        e.stopPropagation();
+        text.value = (data && (data.confirm_text || data.confirmText)) || "Yes, confirm";
+        updateSend();
+        sendDump();
+      });
+
+      const no = document.createElement("button");
+      no.type = "button";
+      no.className = "confirm-btn confirm-no";
+      no.textContent = (data && (data.cancel_label || data.cancelLabel)) || "Cancel";
+      no.addEventListener("click", (e) => {
+        e.stopPropagation();
+        text.value = (data && (data.cancel_text || data.cancelText)) || "No, cancel";
+        updateSend();
+        sendDump();
+      });
+
+      actions.appendChild(yes);
+      actions.appendChild(no);
+    }
+
     const copyBtn = document.createElement("button");
     copyBtn.type = "button";
     copyBtn.className = "copy-btn";
@@ -476,7 +505,6 @@ function startListening() {
 
   recognition.onend = () => {
     if (!listening) return;
-    // Chrome often ends continuous sessions early — restart while user is still in speak mode
     try {
       recognition.start();
     } catch (_) {
@@ -535,8 +563,69 @@ async function readResponse(res) {
   }
 }
 
+async function apiFetch(url, payload) {
+  const controller = new AbortController();
+  const timerId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: apiHeaders(),
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const data = await readResponse(res);
+    return { res, data };
+  } finally {
+    clearTimeout(timerId);
+  }
+}
+
+async function unlock(code) {
+  if (unlocking) return false;
+  unlocking = true;
+  lockError.hidden = true;
+  lockSubmit.disabled = true;
+  lockSubmit.textContent = "Checking…";
+
+  try {
+    const res = await fetch(API_AUTH, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Access-Code": code,
+      },
+      body: JSON.stringify({ access_code: code }),
+    });
+    const data = await readResponse(res);
+
+    if (!res.ok) {
+      lockError.textContent = friendlyError(res.status, "Wrong code. Try again.", data);
+      lockError.hidden = false;
+      lockInput.select();
+      return false;
+    }
+
+    accessCode = code;
+    sessionStorage.setItem(AUTH_CODE_KEY, code);
+    showApp();
+    return true;
+  } catch (e) {
+    lockError.textContent =
+      e && e.name === "AbortError"
+        ? "Timed out. Try again."
+        : "Couldn't reach the server. Open the Vercel site URL (not a local file).";
+    lockError.hidden = false;
+    return false;
+  } finally {
+    unlocking = false;
+    lockSubmit.disabled = false;
+    lockSubmit.textContent = "Unlock";
+  }
+}
+
 async function sendDump() {
-  if (send.disabled || sending || listening || digesting) return;
+  if (send.disabled || sending || listening || digesting || !isUnlocked()) return;
 
   clearError();
   sending = true;
@@ -553,23 +642,14 @@ async function sendDump() {
   localStorage.removeItem(DRAFT_KEY);
 
   try {
-    const res = await fetch(WEBHOOK, {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify({
-        text: dumpText,
-        session_id: sessionId,
-      }),
+    const { res, data } = await apiFetch(API_BRAIN, {
+      text: dumpText,
+      session_id: sessionId,
     });
-
-    const data = await readResponse(res);
     removePending();
 
     if (!res.ok) {
-      const detail =
-        (data && (data.message || data.error || data.errorMessage)) ||
-        "Request failed (" + res.status + ")";
-      throw new Error(detail);
+      throw new Error(friendlyError(res.status, "Request failed.", data));
     }
 
     const message =
@@ -585,21 +665,20 @@ async function sendDump() {
       throw new Error("Invalid response from workflow");
     }
 
-    appendMessage("assistant", message);
+    appendMessage("assistant", message, { data });
 
     text.placeholder = looksLikeQuestion(message)
       ? "Reply here…"
       : "What's on your mind?";
   } catch (e) {
     removePending();
-    const msg =
-      e && e.message
-        ? e.message
-        : "Something went wrong while sending your brain dump.";
+    const msg = e && e.message ? e.message : "Something went wrong.";
     showError(
-      msg.includes("Failed to fetch")
-        ? "Couldn't reach n8n. Check your connection and webhook URL."
-        : msg
+      e && e.name === "AbortError"
+        ? "That took too long. Try again in a moment."
+        : msg.includes("Failed to fetch")
+          ? "Couldn't reach the server. Check your connection and Vercel deploy."
+          : msg
     );
   } finally {
     sending = false;
@@ -607,6 +686,90 @@ async function sendDump() {
     updateSend();
     text.focus();
   }
+}
+
+async function fetchDigest() {
+  if (digesting || sending || listening || !isUnlocked()) return;
+
+  clearError();
+  digesting = true;
+  updateSend();
+  const prevLabel = digestBtn.textContent;
+  digestBtn.textContent = "…";
+
+  appendMessage("user", "Weekly digest");
+  appendMessage("assistant", "", { persist: false, pending: true });
+
+  try {
+    const { res, data } = await apiFetch(API_DIGEST, {
+      session_id: sessionId,
+    });
+    removePending();
+
+    if (!res.ok) {
+      throw new Error(friendlyError(res.status, "Digest failed.", data));
+    }
+
+    const digest =
+      typeof data?.digest === "string"
+        ? data.digest
+        : typeof data?.message === "string"
+          ? data.message
+          : null;
+
+    if (!digest || !String(digest).trim()) {
+      appendMessage(
+        "assistant",
+        "No digest content this time — calendar and inbox look quiet, or the workflow returned empty."
+      );
+      return;
+    }
+
+    let body = digest;
+    if (data.generated_at) {
+      try {
+        const when = new Intl.DateTimeFormat(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(data.generated_at));
+        body = "_Generated " + when + "_\n\n" + digest;
+      } catch (_) {}
+    }
+
+    appendMessage("assistant", body, { data });
+  } catch (e) {
+    removePending();
+    const raw = e && e.message ? e.message : "";
+    showError(
+      e && e.name === "AbortError"
+        ? "Digest timed out. Try again in a moment."
+        : raw.includes("Failed to fetch")
+          ? "Couldn't reach the digest API. Check Vercel env + n8n Active."
+          : raw || "Couldn't load the weekly digest."
+    );
+  } finally {
+    digesting = false;
+    digestBtn.textContent = prevLabel;
+    updateSend();
+  }
+}
+
+function isStandalone() {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true
+  );
+}
+
+function maybeShowInstallHint() {
+  if (!installHint || isStandalone()) return;
+  if (localStorage.getItem(INSTALL_HINT_KEY) === "1") return;
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  installText.textContent = isIOS
+    ? "On iPhone: Share → Add to Home Screen for the app-like version."
+    : "Install this site to your home screen for the app-like version.";
+  installHint.hidden = false;
 }
 
 text.addEventListener("input", () => {
@@ -630,71 +793,6 @@ text.addEventListener("keydown", (e) => {
   }
 });
 
-async function fetchDigest() {
-  if (digesting || sending || listening || !isUnlocked()) return;
-
-  clearError();
-  digesting = true;
-  updateSend();
-  const prevLabel = digestBtn.textContent;
-  digestBtn.textContent = "…";
-
-  appendMessage("user", "Weekly digest");
-  appendMessage("assistant", "", { persist: false, pending: true });
-
-  try {
-    const res = await fetch(DIGEST_WEBHOOK, {
-      method: "POST",
-      headers: apiHeaders(),
-      body: JSON.stringify(metaPayload()),
-    });
-
-    const data = await readResponse(res);
-    removePending();
-
-    if (!res.ok) {
-      const detail =
-        (data && (data.message || data.error || data.digest)) ||
-        "Digest failed (" + res.status + ")";
-      throw new Error(typeof detail === "string" ? detail : "Digest failed");
-    }
-
-    const digest =
-      typeof data?.digest === "string"
-        ? data.digest
-        : typeof data?.message === "string"
-          ? data.message
-          : null;
-
-    if (!digest) throw new Error("Invalid digest response");
-
-    let body = digest;
-    if (data.generated_at) {
-      try {
-        const when = new Intl.DateTimeFormat(undefined, {
-          dateStyle: "medium",
-          timeStyle: "short",
-        }).format(new Date(data.generated_at));
-        body = "_Generated " + when + "_\n\n" + digest;
-      } catch (_) {}
-    }
-
-    appendMessage("assistant", body);
-  } catch (e) {
-    removePending();
-    const raw = e && e.message ? e.message : "";
-    showError(
-      raw.includes("Failed to fetch")
-        ? "Couldn't reach the digest webhook. In n8n, open the Weekly Digest workflow and turn it Active (toggle top-right)."
-        : raw || "Couldn't load the weekly digest. Try again."
-    );
-  } finally {
-    digesting = false;
-    digestBtn.textContent = prevLabel;
-    updateSend();
-  }
-}
-
 clearBtn.addEventListener("click", startNewConversation);
 digestBtn.addEventListener("click", fetchDigest);
 themeBtn.addEventListener("click", toggleTheme);
@@ -716,6 +814,11 @@ lockForm.addEventListener("submit", (e) => {
 });
 
 lockOut.addEventListener("click", lockApp);
+
+installDismiss.addEventListener("click", () => {
+  installHint.hidden = true;
+  localStorage.setItem(INSTALL_HINT_KEY, "1");
+});
 
 function syncViewportHeight() {
   if (!window.visualViewport || !app || app.hidden) return;

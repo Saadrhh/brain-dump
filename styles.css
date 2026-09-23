@@ -734,6 +734,57 @@ textarea::placeholder {
   display: none;
 }
 
+.lock-privacy {
+  margin-top: 4px !important;
+  font-size: 12px !important;
+  line-height: 1.45;
+  color: var(--faint) !important;
+}
+
+.install-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.install-hint[hidden] {
+  display: none;
+}
+
+.confirm-btn {
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  margin-right: 6px;
+}
+
+.confirm-btn.confirm-yes {
+  background: var(--send-bg);
+  color: var(--send-text);
+  border-color: transparent;
+}
+
+.privacy-dot {
+  margin: 0 4px;
+  opacity: 0.6;
+}
+
 .site-footer {
   text-align: center;
   color: var(--faint);
@@ -741,6 +792,7 @@ textarea::placeholder {
   padding: 8px 4px 0;
   margin: 0;
   flex-shrink: 0;
+  line-height: 1.45;
 }
 
 .shell.has-chat .site-footer {
